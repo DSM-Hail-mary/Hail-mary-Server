@@ -4,6 +4,7 @@ pydantic==2.13.4
 httpx==0.28.1
 pandas==3.0.3
 numpy==2.4.4
+python-multipart==0.0.32  # M10 last-seen image upload (UploadFile multipart parsing)
 
 # M5 Forecast Engine (Chronos2Backend) -- amazon-science/chronos-forecasting.
 # torch is CPU-only here (dev PC, no CUDA); on Jetson this must be the

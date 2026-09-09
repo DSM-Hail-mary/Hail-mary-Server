@@ -3,4 +3,5 @@ __pycache__/
 .pytest_cache/
 .coverage
 *.db
+Hail_Mary/server/data/last_seen/
 CLAUDE.md

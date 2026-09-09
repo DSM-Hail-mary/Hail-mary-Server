@@ -1,6 +1,6 @@
 """SQLite schema for the Hail-Mary backend server (M4~M10 data layer).
 
-Six tables, matching 문서/제안서_백엔드추가.md 4.4.3 / 문서/개발_기능명세서.md 5장:
+Seven tables, matching 문서/제안서_백엔드추가.md 4.4.3 / 문서/개발_기능명세서.md 5장:
 
   occupancy        -- M2/M3 edge -> server ingestion (POST /api/v1/occupancy)
   power_reading    -- public dataset (BDG2) ingestion for the Feature Store
@@ -8,6 +8,7 @@ Six tables, matching 문서/제안서_백엔드추가.md 4.4.3 / 문서/개발_�
   anomaly_event    -- Anomaly Detector output
   notification_log -- Notification Service delivery log
   savings_report   -- M8 Savings/Carbon Calculator output
+  last_seen_image  -- dashboard "마지막 목격 이미지" card (1 image per zone_id)
 """
 import sqlite3
 
@@ -18,6 +19,7 @@ EXPECTED_TABLES = (
     "anomaly_event",
     "notification_log",
     "savings_report",
+    "last_seen_image",
 )
 
 _DDL = """
@@ -78,10 +80,16 @@ CREATE TABLE IF NOT EXISTS savings_report (
     tree_equivalent REAL NOT NULL,
     UNIQUE (period_start, period_end)
 );
+
+CREATE TABLE IF NOT EXISTS last_seen_image (
+    zone_id TEXT PRIMARY KEY,
+    captured_at TEXT NOT NULL,
+    image_path TEXT NOT NULL
+);
 """
 
 
 def init_db(connection: sqlite3.Connection) -> None:
-    """Create the 5 tables if they do not already exist. Idempotent."""
+    """Create the tables if they do not already exist. Idempotent."""
     connection.executescript(_DDL)
     connection.commit()
