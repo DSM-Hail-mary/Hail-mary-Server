@@ -1,0 +1,28 @@
+Building Data Genome Project 2 (BDG2) - subset used by Hail-Mary server
+=========================================================================
+
+Source repository (public, no auth required):
+  https://github.com/buds-lab/building-data-genome-project-2
+
+Downloaded: 2026-09-09, via media.githubusercontent.com (Git LFS media endpoint)
+  - data/metadata/metadata.csv          -> metadata_selected.csv (filtered to 3 buildings below)
+  - data/meters/cleaned/electricity_cleaned.csv (175MB full file) -> electricity_2017.csv
+        (filtered to timestamp + the 3 selected building columns, year 2017 only)
+  - data/weather/weather.csv            -> weather_panther_2017.csv
+        (filtered to site_id=Panther, year 2017 only)
+
+Buildings selected (site "Panther", primaryspaceusage=Office, real data,
+chosen for >99.8% hourly completeness in 2017 - see below):
+  - Panther_office_Karla      (2508.4 sqm, built 2010)
+  - Panther_office_Catherine  (2504.0 sqm, built 2005)
+  - Panther_office_Ruthie     (4211.3 sqm, built 2003)
+
+Why 2017 only: the full 2016-2017 electricity series for these buildings has a
+large real gap (site down Jan-May 2016). 2017 is ~99.9% complete
+(8760 hourly rows, 10-12 missing values per building) so it was kept as the
+single clean training/eval year, per 개발계획서.md 1.1 scope reduction to
+2-3 buildings.
+
+No synthetic/mocked values were generated. Missing hourly readings remain
+absent (NaN on load) rather than being backfilled with invented numbers;
+Feature Store resampling documents how these are handled.

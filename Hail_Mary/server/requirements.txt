@@ -1,0 +1,23 @@
+fastapi==0.136.3
+uvicorn==0.49.0
+pydantic==2.13.4
+httpx==0.28.1
+pandas==3.0.3
+numpy==2.4.4
+
+# M5 Forecast Engine (Chronos2Backend) -- amazon-science/chronos-forecasting.
+# torch is CPU-only here (dev PC, no CUDA); on Jetson this must be the
+# JetPack-matched torch build, same caveat edge/requirements.txt notes for
+# opencv-python's GStreamer support.
+torch==2.14.0
+transformers==5.16.1
+accelerate==1.14.0
+safetensors==0.8.0
+tokenizers==0.23.2
+einops==0.8.2
+chronos-forecasting==2.3.2
+huggingface_hub==1.19.0
+
+# M9 Notification Service (WebPushChannel)
+pywebpush==2.5.0
+py-vapid==1.9.4

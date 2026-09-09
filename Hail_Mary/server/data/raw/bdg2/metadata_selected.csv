@@ -1,0 +1,4 @@
+building_id,site_id,building_id_kaggle,site_id_kaggle,primaryspaceusage,sub_primaryspaceusage,sqm,sqft,lat,lng,timezone,electricity,hotwater,chilledwater,steam,water,irrigation,solar,gas,industry,subindustry,heatingtype,yearbuilt,date_opened,numberoffloors,occupants,energystarscore,eui,site_eui,source_eui,leed_level,rating
+Panther_office_Karla,Panther,9.0,0.0,Office,Office,2508.4,27000.0,28.5176885788321,-81.3790387999998,US/Eastern,Yes,,Yes,,Yes,,,,,,,2010.0,,,,,120,,,Gold,
+Panther_office_Catherine,Panther,26.0,0.0,Office,Office,2504.0,26953.0,28.5176885788321,-81.3790387999998,US/Eastern,Yes,,,,Yes,Yes,,,,,,2005.0,,,,,162,,,Gold,
+Panther_office_Ruthie,Panther,104.0,0.0,Office,Office,4211.3,45330.0,28.5176885788321,-81.3790387999998,US/Eastern,Yes,,,,Yes,,,,,,,2003.0,,,,,211,,,None,
