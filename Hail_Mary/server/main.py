@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from Hail_Mary.server.api import anomaly, forecast, occupancy
+from Hail_Mary.server.api import anomaly, forecast, occupancy, savings
 from Hail_Mary.server.db.connection import open_database
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "hail_mary.db"
@@ -24,6 +24,7 @@ def create_app(db_path=None) -> FastAPI:
     app.include_router(occupancy.router)
     app.include_router(forecast.router)
     app.include_router(anomaly.router)
+    app.include_router(savings.router)
 
     @app.get("/health")
     def health():

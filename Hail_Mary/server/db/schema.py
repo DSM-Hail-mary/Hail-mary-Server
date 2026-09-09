@@ -1,14 +1,13 @@
 """SQLite schema for the Hail-Mary backend server (M4~M10 data layer).
 
-Five tables, matching 문서/제안서_백엔드추가.md 4.4.3 / 문서/개발_기능명세서.md 5장
-exactly (no extra tables such as savings_report -- out of scope for this
-implementation pass):
+Six tables, matching 문서/제안서_백엔드추가.md 4.4.3 / 문서/개발_기능명세서.md 5장:
 
   occupancy        -- M2/M3 edge -> server ingestion (POST /api/v1/occupancy)
   power_reading    -- public dataset (BDG2) ingestion for the Feature Store
   forecast         -- Forecast Engine output (with/without occupancy)
   anomaly_event    -- Anomaly Detector output
   notification_log -- Notification Service delivery log
+  savings_report   -- M8 Savings/Carbon Calculator output
 """
 import sqlite3
 
@@ -18,6 +17,7 @@ EXPECTED_TABLES = (
     "forecast",
     "anomaly_event",
     "notification_log",
+    "savings_report",
 )
 
 _DDL = """
@@ -66,6 +66,17 @@ CREATE TABLE IF NOT EXISTS notification_log (
     channel TEXT NOT NULL,
     sent_at TEXT NOT NULL,
     status TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS savings_report (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    period_start TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    saved_kwh REAL NOT NULL,
+    saved_pct REAL NOT NULL,
+    co2_kg REAL NOT NULL,
+    tree_equivalent REAL NOT NULL,
+    UNIQUE (period_start, period_end)
 );
 """
 

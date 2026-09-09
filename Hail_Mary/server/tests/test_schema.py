@@ -75,6 +75,26 @@ def test_occupancy_rejects_duplicate_zone_window(conn):
         )
 
 
+def test_savings_report_table_columns(conn):
+    columns = _columns(conn, "savings_report")
+    assert {"period_start", "period_end", "saved_kwh", "saved_pct", "co2_kg", "tree_equivalent"} <= columns
+
+
+def test_savings_report_rejects_duplicate_period(conn):
+    conn.execute(
+        "INSERT INTO savings_report (period_start, period_end, saved_kwh, saved_pct, co2_kg, tree_equivalent) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        ("2026-09-01T00:00:00Z", "2026-09-08T00:00:00Z", 10.0, 5.0, 4.8, 0.7),
+    )
+    conn.commit()
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO savings_report (period_start, period_end, saved_kwh, saved_pct, co2_kg, tree_equivalent) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            ("2026-09-01T00:00:00Z", "2026-09-08T00:00:00Z", 99.0, 50.0, 47.0, 7.0),
+        )
+
+
 def test_power_reading_rejects_duplicate_building_ts(conn):
     conn.execute(
         "INSERT INTO power_reading (building_id, ts, kwh) VALUES (?, ?, ?)",
