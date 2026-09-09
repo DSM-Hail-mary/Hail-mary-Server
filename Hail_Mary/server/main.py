@@ -8,17 +8,14 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 
-from Hail_Mary.server.api import anomaly, forecast, occupancy, savings
+from Hail_Mary.server.api import anomaly, forecast, last_seen, occupancy, savings
 from Hail_Mary.server.db.connection import open_database
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "hail_mary.db"
 
-# M11 dashboard: static HTML/CSS/JS, no build step (문서/개발계획서.md 1.1절 #8 --
-# REST 폴링 기반, WebSocket 제외). Lives at Hail_Mary/dashboard/, a sibling of
-# this file's parent (Hail_Mary/server/main.py -> Hail_Mary/dashboard/).
-DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
+# M11 dashboard moved to the separate Hail-mary-Front repo (2026-09-10) --
+# this server only serves the API now, no static mount here.
 
 
 def create_app(db_path=None) -> FastAPI:
@@ -31,13 +28,11 @@ def create_app(db_path=None) -> FastAPI:
     app.include_router(forecast.router)
     app.include_router(anomaly.router)
     app.include_router(savings.router)
+    app.include_router(last_seen.router)
 
     @app.get("/health")
     def health():
         return {"status": "ok"}
-
-    if DASHBOARD_DIR.is_dir():
-        app.mount("/dashboard", StaticFiles(directory=DASHBOARD_DIR, html=True), name="dashboard")
 
     return app
 
