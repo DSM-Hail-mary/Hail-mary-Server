@@ -1,0 +1,9 @@
+{
+  "name": "hail-mary-dashboard",
+  "private": true,
+  "type": "module",
+  "description": "M11 dashboard: static HTML/CSS/JS, REST-polling only (no build step). Serve via FastAPI static mount; run unit tests with `npm test`.",
+  "scripts": {
+    "test": "node --test format.test.js"
+  }
+}
