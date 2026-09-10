@@ -1,0 +1,45 @@
+# hail-mary-server.service
+#
+# Hail-Mary 백엔드(FastAPI)를 실서버에서 systemd로 관리하기 위한 유닛 파일.
+# edge/systemd/hail-mary-pipeline.service(Camera 리포)와 같은 목적: 재부팅/크래시 후
+# 자동 복구. Jetson의 uplink.py/last_seen_uplink.py가 이 서버의 실제 주소로 요청을
+# 보내려면 이 서비스가 항상 떠 있어야 한다.
+#
+# 아래 User/WorkingDirectory/ExecStart의 경로·계정 값은 실제 배포 환경(서버 계정, 리포
+# 설치 경로, venv 경로)에 맞춰 현장에서 조정해야 하는 placeholder이다.
+
+[Unit]
+Description=Hail-Mary backend (FastAPI)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# TODO(실서버 배포 시): 실제 배포 계정/경로로 교체
+User=hailmary
+Group=hailmary
+WorkingDirectory=/opt/hail-mary/Hail-mary-Server
+
+# PYTHONPATH: `uvicorn Hail_Mary.server.main:app`을 리포 루트에서 모듈로 실행하기 위함.
+# venv를 쓸 경우 ExecStart의 python 경로도 venv 내부 python으로 바꿀 것(placeholder: 시스템 python3).
+Environment=PYTHONPATH=/opt/hail-mary/Hail-mary-Server
+Environment=PYTHONUNBUFFERED=1
+# DB 경로 기본값(Hail_Mary/server/main.py DEFAULT_DB_PATH)을 쓰지 않고 배포 환경의 영구
+# 저장 경로를 명시적으로 지정 — main.py가 HAIL_MARY_DB_PATH를 읽어 그대로 사용한다.
+Environment=HAIL_MARY_DB_PATH=/opt/hail-mary/data/hail_mary.db
+
+# --host 0.0.0.0: 기본값(127.0.0.1)으로는 Jetson 엣지 기기의 uplink 요청이 도달할 수 없음.
+# --workers는 두지 않음(SQLite 단일 파일 기준 커넥션 동시성 고려, 필요시 조정).
+ExecStart=/usr/bin/python3 -m uvicorn Hail_Mary.server.main:app \
+    --host 0.0.0.0 \
+    --port 8000
+
+# 재시작 정책: on-failure(edge 유닛과 동일 판단 근거) — 운영자가 의도적으로 stop한
+# 경우엔 재시작하지 않고, 크래시/비정상 종료에서만 자동 복구.
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

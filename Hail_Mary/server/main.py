@@ -3,6 +3,12 @@
 Local dev: `uvicorn Hail_Mary.server.main:app --reload` from the repo root.
 DB path defaults to Hail_Mary/server/data/hail_mary.db, overridable with the
 HAIL_MARY_DB_PATH environment variable (used by tests to point at a tmp_path).
+
+Production: `uvicorn Hail_Mary.server.main:app --host 0.0.0.0 --port 8000`
+(no --reload; --host 0.0.0.0 so the Jetson edge device's uplink requests can
+reach it -- 127.0.0.1 only accepts loopback). See
+Hail_Mary/server/systemd/ for a systemd unit that runs this and restarts
+on crash/reboot.
 """
 import os
 from pathlib import Path
