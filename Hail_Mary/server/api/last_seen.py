@@ -11,9 +11,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from pydantic import BaseModel
+
+from Hail_Mary.server.api.deps import get_db
 
 router = APIRouter(prefix="/api/v1/last-seen", tags=["last-seen"])
 
@@ -76,17 +79,17 @@ def list_last_seen(conn: sqlite3.Connection) -> list:
     return [dict(row) for row in rows]
 
 
-def get_db(request: Request) -> sqlite3.Connection:
-    return request.app.state.db
-
-
 @router.post("/{zone_id}", response_model=LastSeenUploadResponse)
 async def upload_last_seen_image(zone_id: str, image: UploadFile, conn: sqlite3.Connection = Depends(get_db)):
     if not is_valid_zone_id(zone_id):
         raise HTTPException(status_code=400, detail="invalid zone_id")
     image_bytes = await image.read()
     captured_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-    save_last_seen_image(conn, zone_id, image_bytes, captured_at)
+    # save_last_seen_image() does a blocking disk write + sqlite commit --
+    # this route is `async def` (UploadFile.read() needs it), so without
+    # offloading, that blocking call runs directly on the event loop thread
+    # and stalls every other in-flight request for its duration.
+    await run_in_threadpool(save_last_seen_image, conn, zone_id, image_bytes, captured_at)
     return LastSeenUploadResponse(zone_id=zone_id, captured_at=captured_at)
 
 

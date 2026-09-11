@@ -34,6 +34,25 @@ def test_get_forecast_unknown_building_returns_empty_list(app_and_client):
     assert response.json() == []
 
 
+def test_get_forecast_rejects_non_positive_horizon(app_and_client):
+    # SQLite's `LIMIT ?` treats a negative bound as "no limit" -- before the
+    # ge=1 constraint, horizon=-1 silently returned every stored row instead
+    # of erroring, a deviation from the documented horizon= contract (code
+    # review 2026-09-11).
+    app, client = app_and_client
+    insert_forecast_rows(app.state.db, generated_at="2026-09-09T00:00:00Z", rows=[
+        {"building_id": "b1", "target_ts": "2017-01-06T09:00:00", "with_occ_kwh": None, "without_occ_kwh": 20.0, "actual_kwh": None},
+    ])
+
+    response = client.get("/api/v1/forecast", params={"building_id": "b1", "horizon": -1})
+
+    assert response.status_code == 422
+
+    response = client.get("/api/v1/forecast", params={"building_id": "b1", "horizon": 0})
+
+    assert response.status_code == 422
+
+
 def test_get_forecast_ablation_computes_metrics_from_stored_rows(app_and_client):
     app, client = app_and_client
     insert_forecast_rows(app.state.db, generated_at="2026-09-09T00:00:00Z", rows=[

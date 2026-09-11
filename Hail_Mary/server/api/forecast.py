@@ -7,8 +7,9 @@ insert_forecast_rows) rather than running the model inline, matching the
 import sqlite3
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query
 
+from Hail_Mary.server.api.deps import get_db
 from Hail_Mary.server.core.ablation import evaluate_ablation
 
 router = APIRouter(prefix="/api/v1/forecast", tags=["forecast"])
@@ -69,12 +70,12 @@ def query_forecast_rows_with_actual(
     return [dict(row) for row in rows]
 
 
-def get_db(request: Request) -> sqlite3.Connection:
-    return request.app.state.db
-
-
 @router.get("")
-def get_forecast(building_id: str, horizon: Optional[int] = None, conn: sqlite3.Connection = Depends(get_db)):
+def get_forecast(
+    building_id: str,
+    horizon: Optional[int] = Query(default=None, ge=1),
+    conn: sqlite3.Connection = Depends(get_db),
+):
     return query_forecast(conn, building_id=building_id, horizon=horizon)
 
 

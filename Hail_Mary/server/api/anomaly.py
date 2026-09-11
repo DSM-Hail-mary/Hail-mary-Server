@@ -3,7 +3,9 @@
 import sqlite3
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
+
+from Hail_Mary.server.api.deps import get_db
 
 router = APIRouter(prefix="/api/v1/anomaly", tags=["anomaly"])
 
@@ -39,10 +41,6 @@ def acknowledge_anomaly(conn: sqlite3.Connection, event_id: str) -> bool:
     cursor = conn.execute("UPDATE anomaly_event SET resolved = 1 WHERE event_id = ?", (event_id,))
     conn.commit()
     return cursor.rowcount > 0
-
-
-def get_db(request: Request) -> sqlite3.Connection:
-    return request.app.state.db
 
 
 @router.get("")

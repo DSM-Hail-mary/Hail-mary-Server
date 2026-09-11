@@ -7,8 +7,10 @@ build_occupancy_payload(): a JSON array of
 import sqlite3
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+
+from Hail_Mary.server.api.deps import get_db
 
 router = APIRouter(prefix="/api/v1/occupancy", tags=["occupancy"])
 
@@ -60,26 +62,30 @@ def insert_occupancy_batch(conn: sqlite3.Connection, records: list) -> int:
 
 
 def latest_occupancy(conn: sqlite3.Connection, zone_id: Optional[str] = None):
-    """Return the most-recent-window occupancy row (by window_end) for a given
-    zone_id, or for every zone if zone_id is None."""
+    """Return the most-recent-window occupancy row (by window_end, tie-broken
+    by the most-recently-inserted row when two windows share a window_end)
+    for a given zone_id, or for every zone if zone_id is None."""
     if zone_id is not None:
         row = conn.execute(
             "SELECT zone_id, window_start, window_end, count FROM occupancy "
-            "WHERE zone_id = ? ORDER BY window_end DESC LIMIT 1",
+            "WHERE zone_id = ? ORDER BY window_end DESC, id DESC LIMIT 1",
             (zone_id,),
         ).fetchone()
         return dict(row) if row else None
 
+    # A bare "GROUP BY zone_id" alongside non-aggregated columns lets SQLite
+    # pick an arbitrary row per group when window_end ties -- select the
+    # exact winning row's id first (same tie-break as the single-zone branch
+    # above) so both branches agree.
     rows = conn.execute(
         "SELECT zone_id, window_start, window_end, count FROM occupancy o "
-        "WHERE window_end = (SELECT MAX(window_end) FROM occupancy WHERE zone_id = o.zone_id) "
-        "GROUP BY zone_id"
+        "WHERE id = ("
+        "  SELECT id FROM occupancy WHERE zone_id = o.zone_id "
+        "  ORDER BY window_end DESC, id DESC LIMIT 1"
+        ") "
+        "ORDER BY zone_id ASC"
     ).fetchall()
     return [dict(row) for row in rows]
-
-
-def get_db(request: Request) -> sqlite3.Connection:
-    return request.app.state.db
 
 
 @router.post("", response_model=OccupancyBatchUploadResponse)

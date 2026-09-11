@@ -11,6 +11,7 @@ Hail_Mary/server/systemd/ for a systemd unit that runs this and restarts
 on crash/reboot.
 """
 import os
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -29,6 +30,9 @@ def create_app(db_path=None) -> FastAPI:
     sharing the on-disk demo DB."""
     app = FastAPI(title="Hail-Mary Backend", version="0.1.0")
     app.state.db = open_database(db_path or DEFAULT_DB_PATH)
+    # sqlite3.Connection is not thread-safe for concurrent use even with
+    # check_same_thread=False -- see api/deps.py get_db() docstring.
+    app.state.db_lock = threading.Lock()
 
     app.include_router(occupancy.router)
     app.include_router(forecast.router)

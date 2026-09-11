@@ -7,9 +7,10 @@ here rather than something this module derives) and persists it.
 import sqlite3
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, model_validator
 
+from Hail_Mary.server.api.deps import get_db
 from Hail_Mary.server.core.savings import compute_savings
 
 router = APIRouter(prefix="/api/v1/savings", tags=["savings"])
@@ -63,10 +64,6 @@ def query_savings_reports(conn: sqlite3.Connection, period_start: Optional[str] 
     query += " ORDER BY period_start ASC"
     rows = conn.execute(query, params).fetchall()
     return [dict(row) for row in rows]
-
-
-def get_db(request: Request) -> sqlite3.Connection:
-    return request.app.state.db
 
 
 @router.post("", response_model=SavingsReport)

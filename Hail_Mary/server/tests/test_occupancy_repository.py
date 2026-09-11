@@ -80,3 +80,23 @@ def test_latest_occupancy_without_zone_id_returns_all_zones_latest(conn):
 
     by_zone = {row["zone_id"]: row["count"] for row in results}
     assert by_zone == {"hall_main": 5, "hall_side": 1}
+
+
+def test_latest_occupancy_breaks_window_end_ties_by_most_recently_inserted(conn):
+    # Two rows for the same zone can legitimately share window_end (e.g. a
+    # 1-minute window re-reported by two overlapping aggregator runs). Before
+    # the fix, both the single-zone and all-zones queries had no deterministic
+    # tie-break, so SQLite could return either row depending on its internal
+    # b-tree state -- see code review 2026-09-11. The most-recently-inserted
+    # row (highest autoincrement id) should win consistently.
+    tie_batch = [
+        {"zone_id": "hall_main", "window_start": "2026-08-21T10:00:00Z", "window_end": "2026-08-21T10:01:00Z", "count": 2},
+        {"zone_id": "hall_main", "window_start": "2026-08-21T10:00:30Z", "window_end": "2026-08-21T10:01:00Z", "count": 9},
+    ]
+    insert_occupancy_batch(conn, tie_batch)
+
+    single = latest_occupancy(conn, zone_id="hall_main")
+    assert single["count"] == 9
+
+    all_zones = latest_occupancy(conn, zone_id=None)
+    assert all_zones[0]["count"] == 9
