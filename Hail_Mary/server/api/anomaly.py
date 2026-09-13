@@ -19,7 +19,13 @@ class AnomalyEventIn(BaseModel):
     event_id: str = Field(min_length=1)
     zone_id: str = Field(min_length=1)
     ts: str = Field(min_length=1)
-    residual_kwh: float
+    # allow_inf_nan=False: Infinity is a legal IEEE-754 double (and
+    # json.loads() accepts the literal "Infinity"/"NaN" by default), so
+    # without this it would insert successfully and then permanently 500
+    # every later GET /api/v1/anomaly for everyone -- Starlette's
+    # JSONResponse.render() calls json.dumps(..., allow_nan=False), with no
+    # exception handler anywhere to catch that (code review 2026-09-14).
+    residual_kwh: float = Field(allow_inf_nan=False)
     occupancy_at_ts: int = Field(ge=0)
     severity: str = Field(min_length=1)
     resolved: bool = False

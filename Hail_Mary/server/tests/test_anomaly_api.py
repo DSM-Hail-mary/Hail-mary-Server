@@ -55,6 +55,34 @@ def test_post_anomaly_batch_retry_is_idempotent(app_and_client):
     assert response.json() == {"inserted": 0, "received": 1}
 
 
+def test_post_anomaly_batch_rejects_infinite_residual_kwh(app_and_client):
+    # Code review 2026-09-14: residual_kwh had no allow_inf_nan=False, so a
+    # POST with "residual_kwh": Infinity (a legal IEEE-754 double, and
+    # json.loads() accepts the literal "Infinity"/"NaN" by default) inserted
+    # successfully, then permanently 500'd every subsequent GET /api/v1/anomaly
+    # for everyone -- Starlette's JSONResponse.render() calls
+    # json.dumps(..., allow_nan=False), which raises ValueError on an inf/nan
+    # float with no exception handler anywhere to catch it. There was no way
+    # to recover except editing the SQLite file directly (ack only resolves,
+    # never deletes). Must be rejected at the ingestion boundary instead.
+    _, client = app_and_client
+    payload_bytes = (
+        b'[{"event_id": "e-inf", "zone_id": "hall_main", "ts": "2026-09-13T09:00:00Z", '
+        b'"residual_kwh": Infinity, "occupancy_at_ts": 0, "severity": "high", "resolved": false}]'
+    )
+
+    response = client.post(
+        "/api/v1/anomaly", content=payload_bytes, headers={"Content-Type": "application/json"}
+    )
+
+    assert response.status_code == 422
+
+    # The list endpoint must still work -- nothing got through to break it.
+    listed = client.get("/api/v1/anomaly")
+    assert listed.status_code == 200
+    assert listed.json() == []
+
+
 def test_post_anomaly_batch_rejects_empty_event_id(app_and_client):
     _, client = app_and_client
     payload = [

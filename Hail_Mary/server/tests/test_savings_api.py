@@ -52,6 +52,23 @@ def test_post_savings_rejects_empty_series(app_and_client):
     assert response.status_code == 422
 
 
+def test_post_savings_rejects_infinite_values_in_either_series(app_and_client):
+    # Same class of bug as POST /api/v1/anomaly's residual_kwh (code review
+    # 2026-09-14): an unconstrained float list accepts the JSON literal
+    # "Infinity", which would otherwise reach core.savings.compute_savings()
+    # and produce a non-finite saved_kwh/saved_pct that crashes on response
+    # serialization instead of failing 422 cleanly.
+    _, client = app_and_client
+    payload_bytes = (
+        b'{"period_start": "2026-09-01T00:00:00Z", "period_end": "2026-09-08T00:00:00Z", '
+        b'"actual_kwh": [Infinity], "simulated_kwh": [80.0]}'
+    )
+
+    response = client.post("/api/v1/savings", content=payload_bytes, headers={"Content-Type": "application/json"})
+
+    assert response.status_code == 422
+
+
 def test_get_savings_filters_by_period_start(app_and_client):
     _, client = app_and_client
     client.post("/api/v1/savings", json={

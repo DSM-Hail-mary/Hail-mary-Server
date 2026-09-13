@@ -5,10 +5,12 @@ series (see core.savings for why the control-simulation series is an input
 here rather than something this module derives) and persists it.
 """
 import sqlite3
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, model_validator
+
+_FiniteFloat = Annotated[float, Field(allow_inf_nan=False)]
 
 from Hail_Mary.server.api.deps import get_db, require_api_key
 from Hail_Mary.server.core.savings import compute_savings
@@ -19,8 +21,13 @@ router = APIRouter(prefix="/api/v1/savings", tags=["savings"])
 class SavingsComputeRequest(BaseModel):
     period_start: str = Field(min_length=1)
     period_end: str = Field(min_length=1)
-    actual_kwh: List[float]
-    simulated_kwh: List[float]
+    # allow_inf_nan=False on each element -- same rationale as
+    # anomaly.py's AnomalyEventIn.residual_kwh (code review 2026-09-14): an
+    # Infinity/NaN reading would otherwise reach compute_savings() and
+    # produce a non-finite saved_kwh/saved_pct that crashes on response
+    # serialization instead of failing 422 at the boundary.
+    actual_kwh: List[_FiniteFloat]
+    simulated_kwh: List[_FiniteFloat]
 
     @model_validator(mode="after")
     def _series_same_length(self):
