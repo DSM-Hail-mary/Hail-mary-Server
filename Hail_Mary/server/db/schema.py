@@ -33,6 +33,13 @@ CREATE TABLE IF NOT EXISTS occupancy (
     UNIQUE (zone_id, window_start, window_end)
 );
 
+-- Supports api/occupancy.py latest_occupancy()'s "most recent window per
+-- zone" lookups (both the single-zone and all-zones branches) without a
+-- full table scan + temp b-tree sort per zone -- code review 2026-09-13
+-- found the unindexed query plan scans every historical row on every call,
+-- on the endpoint the live dashboard polls most frequently.
+CREATE INDEX IF NOT EXISTS idx_occupancy_zone_latest ON occupancy (zone_id, window_end DESC, id DESC);
+
 CREATE TABLE IF NOT EXISTS power_reading (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     building_id TEXT NOT NULL,

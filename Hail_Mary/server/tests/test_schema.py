@@ -56,6 +56,13 @@ def test_notification_log_table_columns(conn):
     assert {"event_id", "channel", "sent_at", "status"} <= columns
 
 
+def test_creates_occupancy_zone_latest_index(conn):
+    # Supports api/occupancy.py's "most recent window per zone" query
+    # without a full table scan (code review 2026-09-13).
+    names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+    assert "idx_occupancy_zone_latest" in names
+
+
 def test_init_db_is_idempotent(conn):
     # Calling init_db a second time on an already-initialized connection
     # must not raise (CREATE TABLE IF NOT EXISTS semantics).

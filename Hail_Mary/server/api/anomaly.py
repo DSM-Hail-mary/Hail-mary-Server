@@ -1,13 +1,33 @@
-"""GET /api/v1/anomaly, POST /api/v1/anomaly/{event_id}/ack (문서/개발_기능명세서.md
-6장). Persists/reads M7 Anomaly Detector output (core.anomaly_detector)."""
+"""POST /api/v1/anomaly, GET /api/v1/anomaly, POST /api/v1/anomaly/{event_id}/ack
+(문서/개발_기능명세서.md 6장). Persists/reads M7 Anomaly Detector output
+(core.anomaly_detector.detect_anomalies() produces exactly the POST body
+shape below -- code review 2026-09-13 found that function had no HTTP route
+feeding its output in anywhere, the M7 counterpart to how POST
+/api/v1/occupancy ingests M2/M3 edge uplink batches)."""
 import sqlite3
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from Hail_Mary.server.api.deps import get_db
 
 router = APIRouter(prefix="/api/v1/anomaly", tags=["anomaly"])
+
+
+class AnomalyEventIn(BaseModel):
+    event_id: str = Field(min_length=1)
+    zone_id: str = Field(min_length=1)
+    ts: str = Field(min_length=1)
+    residual_kwh: float
+    occupancy_at_ts: int = Field(ge=0)
+    severity: str = Field(min_length=1)
+    resolved: bool = False
+
+
+class AnomalyBatchUploadResponse(BaseModel):
+    inserted: int
+    received: int
 
 
 def insert_anomaly_events(conn: sqlite3.Connection, events: list) -> int:
@@ -41,6 +61,13 @@ def acknowledge_anomaly(conn: sqlite3.Connection, event_id: str) -> bool:
     cursor = conn.execute("UPDATE anomaly_event SET resolved = 1 WHERE event_id = ?", (event_id,))
     conn.commit()
     return cursor.rowcount > 0
+
+
+@router.post("", response_model=AnomalyBatchUploadResponse)
+def upload_anomaly_batch(events: list[AnomalyEventIn], conn: sqlite3.Connection = Depends(get_db)):
+    payload = [event.model_dump() for event in events]
+    inserted = insert_anomaly_events(conn, payload)
+    return AnomalyBatchUploadResponse(inserted=inserted, received=len(events))
 
 
 @router.get("")

@@ -19,6 +19,54 @@ def _seed(app):
     ])
 
 
+def test_post_anomaly_batch_persists_and_is_queryable(app_and_client):
+    # Code review 2026-09-13: core.anomaly_detector.detect_anomalies()
+    # produces exactly this event shape, but there was no HTTP route to feed
+    # its output in -- insert_anomaly_events() was only ever called from
+    # this file's own tests. This is the ingestion counterpart to
+    # POST /api/v1/occupancy (which does the same job for M2/M3 uplink).
+    _, client = app_and_client
+    payload = [
+        {"event_id": "e-new", "zone_id": "hall_main", "ts": "2026-09-13T09:00:00Z",
+         "residual_kwh": 12.5, "occupancy_at_ts": 0, "severity": "high", "resolved": False},
+    ]
+
+    response = client.post("/api/v1/anomaly", json=payload)
+
+    assert response.status_code == 200
+    assert response.json() == {"inserted": 1, "received": 1}
+
+    listed = client.get("/api/v1/anomaly").json()
+    assert len(listed) == 1
+    assert listed[0]["event_id"] == "e-new"
+
+
+def test_post_anomaly_batch_retry_is_idempotent(app_and_client):
+    _, client = app_and_client
+    payload = [
+        {"event_id": "e-dup", "zone_id": "hall_main", "ts": "2026-09-13T09:00:00Z",
+         "residual_kwh": 12.5, "occupancy_at_ts": 0, "severity": "high", "resolved": False},
+    ]
+    client.post("/api/v1/anomaly", json=payload)
+
+    response = client.post("/api/v1/anomaly", json=payload)
+
+    assert response.status_code == 200
+    assert response.json() == {"inserted": 0, "received": 1}
+
+
+def test_post_anomaly_batch_rejects_empty_event_id(app_and_client):
+    _, client = app_and_client
+    payload = [
+        {"event_id": "", "zone_id": "hall_main", "ts": "2026-09-13T09:00:00Z",
+         "residual_kwh": 12.5, "occupancy_at_ts": 0, "severity": "high", "resolved": False},
+    ]
+
+    response = client.post("/api/v1/anomaly", json=payload)
+
+    assert response.status_code == 422  # pydantic Field(min_length=1) validation
+
+
 def test_get_anomalies_returns_seeded_event(app_and_client):
     app, client = app_and_client
     _seed(app)

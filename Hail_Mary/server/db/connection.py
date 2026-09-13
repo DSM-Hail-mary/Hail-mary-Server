@@ -20,5 +20,12 @@ def open_database(db_path: Union[str, Path]) -> sqlite3.Connection:
     connection = sqlite3.connect(str(path), check_same_thread=False)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
+    # journal_mode is a persistent property of the database *file*, not the
+    # connection -- setting it once here (at app startup) means every later
+    # per-request connection opened against the same file (api/deps.py
+    # get_db()) inherits WAL mode too. WAL lets readers proceed without
+    # blocking on a concurrent writer, reducing lock contention under the
+    # concurrent edge-upload + dashboard-polling load this app expects.
+    connection.execute("PRAGMA journal_mode = WAL")
     init_db(connection)
     return connection

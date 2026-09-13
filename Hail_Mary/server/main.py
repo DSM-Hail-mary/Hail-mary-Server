@@ -11,7 +11,6 @@ Hail_Mary/server/systemd/ for a systemd unit that runs this and restarts
 on crash/reboot.
 """
 import os
-import threading
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -28,11 +27,16 @@ DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "hail_mary.db"
 def create_app(db_path=None) -> FastAPI:
     """App factory so tests can each get an isolated SQLite file instead of
     sharing the on-disk demo DB."""
+    resolved_db_path = db_path or DEFAULT_DB_PATH
     app = FastAPI(title="Hail-Mary Backend", version="0.1.0")
-    app.state.db = open_database(db_path or DEFAULT_DB_PATH)
-    # sqlite3.Connection is not thread-safe for concurrent use even with
-    # check_same_thread=False -- see api/deps.py get_db() docstring.
-    app.state.db_lock = threading.Lock()
+    # This connection is kept open only to run schema init once at startup
+    # (open_database() also switches the file to WAL mode, a per-file
+    # setting that persists for every connection opened against it
+    # afterwards) and so tests can seed data directly via app.state.db.
+    # Routes never use this connection -- see api/deps.py get_db(), which
+    # opens its own short-lived connection per request against db_path.
+    app.state.db = open_database(resolved_db_path)
+    app.state.db_path = resolved_db_path
 
     app.include_router(occupancy.router)
     app.include_router(forecast.router)

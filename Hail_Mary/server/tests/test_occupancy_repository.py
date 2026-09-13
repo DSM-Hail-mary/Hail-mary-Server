@@ -100,3 +100,39 @@ def test_latest_occupancy_breaks_window_end_ties_by_most_recently_inserted(conn)
 
     all_zones = latest_occupancy(conn, zone_id=None)
     assert all_zones[0]["count"] == 9
+
+
+def test_latest_occupancy_queries_use_the_zone_index_not_a_temp_sort(conn):
+    # Code review 2026-09-13: neither query had index support, so SQLite
+    # built a temp b-tree to sort by window_end for every zone lookup (an
+    # O(rows-for-that-zone log rows-for-that-zone) cost paid on every call,
+    # for the endpoint the live dashboard polls most frequently). Verified
+    # (see also idx_occupancy_zone_latest in schema.py) that after adding
+    # the index, both branches resolve "latest row for a zone" via a direct
+    # indexed SEARCH instead of a sort -- "USE TEMP B-TREE FOR ORDER BY"
+    # must not appear in either plan. (The all-zones query still SCANs the
+    # outer table once -- one row touched per historical record is
+    # unavoidable with this "per-row correlated lookup" shape -- but each of
+    # those per-row lookups is now an index SEARCH, not a re-sort.)
+    insert_occupancy_batch(conn, _batch())
+
+    single_plan = conn.execute(
+        "EXPLAIN QUERY PLAN "
+        "SELECT zone_id, window_start, window_end, count FROM occupancy "
+        "WHERE zone_id = ? ORDER BY window_end DESC, id DESC LIMIT 1",
+        ("hall_main",),
+    ).fetchall()
+    all_zones_plan = conn.execute(
+        "EXPLAIN QUERY PLAN "
+        "SELECT zone_id, window_start, window_end, count FROM occupancy o "
+        "WHERE id = ("
+        "  SELECT id FROM occupancy WHERE zone_id = o.zone_id "
+        "  ORDER BY window_end DESC, id DESC LIMIT 1"
+        ") "
+        "ORDER BY zone_id ASC"
+    ).fetchall()
+
+    for plan in (single_plan, all_zones_plan):
+        detail = " ".join(row[3] for row in plan)
+        assert "idx_occupancy_zone_latest" in detail, detail
+        assert "TEMP B-TREE" not in detail, detail
