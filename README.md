@@ -30,6 +30,11 @@ uvicorn Hail_Mary.server.main:app --host 0.0.0.0 --port 8000
   `edge/uplink.py`/`last_seen_uplink.py`)의 요청이 도달함. `127.0.0.1`(기본값)은 루프백만 받음.
 - `HAIL_MARY_DB_PATH`로 영구 저장 위치를 명시적으로 지정할 것(기본 경로는 리포 안이라
   배포 계정에 따라 쓰기 권한/백업 관점에서 부적절할 수 있음).
+- `HAIL_MARY_API_KEY`를 설정하면 쓰기(POST) 엔드포인트에 `X-API-Key` 헤더가 필요해짐
+  (제안서_백엔드추가.md 4.4.4의 "단순 API 키로 시작"). 미설정 시(기본값) 전부 열려 있음 —
+  Jetson 엣지의 `uplink.py`/`last_seen_uplink.py`에도 같은 키를 설정해야 함. 대시보드가
+  직접 호출하는 `GET` 전부와 이상알림 "확인"(`POST /api/v1/anomaly/{id}/ack`)은 브라우저가
+  키를 안전하게 보관할 곳이 없어 키 설정 여부와 무관하게 항상 열려 있음.
 - 재부팅/크래시 후 자동 재시작이 필요하면 `Hail_Mary/server/systemd/` 참고
   (`hail-mary-server.service` + 설치 방법).
 - 헬스체크: `GET /health` → `{"status":"ok"}`.

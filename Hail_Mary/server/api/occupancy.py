@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from Hail_Mary.server.api.deps import get_db
+from Hail_Mary.server.api.deps import get_db, require_api_key
 
 router = APIRouter(prefix="/api/v1/occupancy", tags=["occupancy"])
 
@@ -88,7 +88,7 @@ def latest_occupancy(conn: sqlite3.Connection, zone_id: Optional[str] = None):
     return [dict(row) for row in rows]
 
 
-@router.post("", response_model=OccupancyBatchUploadResponse)
+@router.post("", response_model=OccupancyBatchUploadResponse, dependencies=[Depends(require_api_key)])
 def upload_occupancy_batch(records: list[OccupancyRecord], conn: sqlite3.Connection = Depends(get_db)):
     payload = [record.model_dump() for record in records]
     inserted = insert_occupancy_batch(conn, payload)

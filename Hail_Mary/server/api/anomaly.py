@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from Hail_Mary.server.api.deps import get_db
+from Hail_Mary.server.api.deps import get_db, require_api_key
 
 router = APIRouter(prefix="/api/v1/anomaly", tags=["anomaly"])
 
@@ -63,7 +63,7 @@ def acknowledge_anomaly(conn: sqlite3.Connection, event_id: str) -> bool:
     return cursor.rowcount > 0
 
 
-@router.post("", response_model=AnomalyBatchUploadResponse)
+@router.post("", response_model=AnomalyBatchUploadResponse, dependencies=[Depends(require_api_key)])
 def upload_anomaly_batch(events: list[AnomalyEventIn], conn: sqlite3.Connection = Depends(get_db)):
     payload = [event.model_dump() for event in events]
     inserted = insert_anomaly_events(conn, payload)
@@ -75,7 +75,8 @@ def get_anomalies(status: Optional[str] = None, conn: sqlite3.Connection = Depen
     return query_anomalies(conn, status=status)
 
 
-@router.post("/{event_id}/ack")
+@router.post("/{event_id}/ack")  # no API key: called directly by the browser dashboard's "확인" button (app.js),
+# which has no secure place to hold a secret -- same reasoning as GETs, see require_api_key()'s docstring.
 def ack_anomaly(event_id: str, conn: sqlite3.Connection = Depends(get_db)):
     if not acknowledge_anomaly(conn, event_id):
         raise HTTPException(status_code=404, detail="anomaly event not found")

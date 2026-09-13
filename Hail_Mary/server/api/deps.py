@@ -31,14 +31,34 @@ coordination -- and with no cross-request lock, there is nothing left to
 deadlock on.
 """
 import sqlite3
-from typing import Iterator
+from typing import Iterator, Optional
 
-from fastapi import Request
+from fastapi import Header, HTTPException, Request
 
 # How long a request will wait for SQLite's own internal lock before giving
 # up (maps to sqlite3.connect()'s `timeout` -> PRAGMA busy_timeout). Higher
 # than the 5s default since this app expects bursts of edge-zone uploads.
 BUSY_TIMEOUT_SECONDS = 10.0
+
+
+def require_api_key(
+    request: Request, x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")
+) -> None:
+    """Write-endpoint guard (제안서_백엔드추가.md 4.4.4: "데모 범위에서는 단순 API
+    키로 시작"). Opt-in: if HAIL_MARY_API_KEY isn't set at startup,
+    app.state.api_key is None and every request passes unchecked -- this
+    keeps local dev and the existing test suite working with no key
+    configured, matching how the rest of this app defaults to "open" until a
+    deployment explicitly configures otherwise (e.g. HAIL_MARY_DB_PATH).
+    Only applied to write routes (POST) -- the dashboard's read-only GETs
+    have no secure place to keep a key in a static JS file, so they stay
+    open regardless.
+    """
+    expected = getattr(request.app.state, "api_key", None)
+    if expected is None:
+        return
+    if x_api_key != expected:
+        raise HTTPException(status_code=401, detail="missing or invalid X-API-Key")
 
 
 def get_db(request: Request) -> Iterator[sqlite3.Connection]:

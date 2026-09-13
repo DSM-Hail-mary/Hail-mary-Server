@@ -10,7 +10,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, model_validator
 
-from Hail_Mary.server.api.deps import get_db
+from Hail_Mary.server.api.deps import get_db, require_api_key
 from Hail_Mary.server.core.savings import compute_savings
 
 router = APIRouter(prefix="/api/v1/savings", tags=["savings"])
@@ -66,7 +66,7 @@ def query_savings_reports(conn: sqlite3.Connection, period_start: Optional[str] 
     return [dict(row) for row in rows]
 
 
-@router.post("", response_model=SavingsReport)
+@router.post("", response_model=SavingsReport, dependencies=[Depends(require_api_key)])
 def post_savings(body: SavingsComputeRequest, conn: sqlite3.Connection = Depends(get_db)):
     report = compute_savings(
         period_start=body.period_start, period_end=body.period_end,

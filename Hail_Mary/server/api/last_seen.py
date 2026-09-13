@@ -16,7 +16,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from Hail_Mary.server.api.deps import get_db
+from Hail_Mary.server.api.deps import get_db, require_api_key
 
 router = APIRouter(prefix="/api/v1/last-seen", tags=["last-seen"])
 
@@ -79,7 +79,7 @@ def list_last_seen(conn: sqlite3.Connection) -> list:
     return [dict(row) for row in rows]
 
 
-@router.post("/{zone_id}", response_model=LastSeenUploadResponse)
+@router.post("/{zone_id}", response_model=LastSeenUploadResponse, dependencies=[Depends(require_api_key)])
 async def upload_last_seen_image(zone_id: str, image: UploadFile, conn: sqlite3.Connection = Depends(get_db)):
     if not is_valid_zone_id(zone_id):
         raise HTTPException(status_code=400, detail="invalid zone_id")

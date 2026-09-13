@@ -4,6 +4,11 @@ Local dev: `uvicorn Hail_Mary.server.main:app --reload` from the repo root.
 DB path defaults to Hail_Mary/server/data/hail_mary.db, overridable with the
 HAIL_MARY_DB_PATH environment variable (used by tests to point at a tmp_path).
 
+Write endpoints (POST) are open by default -- set HAIL_MARY_API_KEY to require
+a matching `X-API-Key` header on them (제안서_백엔드추가.md 4.4.4's "단순 API
+키로 시작"; see api/deps.py require_api_key()). Read-only GET routes (the
+dashboard) never require it.
+
 Production: `uvicorn Hail_Mary.server.main:app --host 0.0.0.0 --port 8000`
 (no --reload; --host 0.0.0.0 so the Jetson edge device's uplink requests can
 reach it -- 127.0.0.1 only accepts loopback). See
@@ -24,9 +29,10 @@ DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "hail_mary.db"
 # this server only serves the API now, no static mount here.
 
 
-def create_app(db_path=None) -> FastAPI:
+def create_app(db_path=None, api_key=None) -> FastAPI:
     """App factory so tests can each get an isolated SQLite file instead of
-    sharing the on-disk demo DB."""
+    sharing the on-disk demo DB. api_key=None (the default) leaves write
+    endpoints open -- see api/deps.py require_api_key()."""
     resolved_db_path = db_path or DEFAULT_DB_PATH
     app = FastAPI(title="Hail-Mary Backend", version="0.1.0")
     # This connection is kept open only to run schema init once at startup
@@ -37,6 +43,7 @@ def create_app(db_path=None) -> FastAPI:
     # opens its own short-lived connection per request against db_path.
     app.state.db = open_database(resolved_db_path)
     app.state.db_path = resolved_db_path
+    app.state.api_key = api_key
 
     app.include_router(occupancy.router)
     app.include_router(forecast.router)
@@ -51,4 +58,6 @@ def create_app(db_path=None) -> FastAPI:
     return app
 
 
-app = create_app(os.environ.get("HAIL_MARY_DB_PATH"))  # pragma: no cover -- module-level singleton exercised via uvicorn, not pytest; create_app() itself is fully covered
+app = create_app(
+    os.environ.get("HAIL_MARY_DB_PATH"), os.environ.get("HAIL_MARY_API_KEY")
+)  # pragma: no cover -- module-level singleton exercised via uvicorn, not pytest; create_app() itself is fully covered
