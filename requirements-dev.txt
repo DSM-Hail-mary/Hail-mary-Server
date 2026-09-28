@@ -1,0 +1,4 @@
+# 개발/테스트 의존성
+-r requirements.txt
+pytest==8.3.4
+httpx==0.28.1          # FastAPI TestClient 백엔드
