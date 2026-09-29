@@ -12,5 +12,8 @@ venv/
 # 로컬 SQLite DB (seed로 생성)
 *.db
 
+# 판정 사진 (런타임 저장)
+images/
+
 # OMC 세션 상태 (도구 산출물)
 .omc/
