@@ -8,6 +8,7 @@ os.environ["POLEWATCH_DB"] = os.path.join(tempfile.gettempdir(), "polewatch_test
 import pytest
 from fastapi.testclient import TestClient
 
+import main
 from db import get_conn, init_db
 from main import app
 
@@ -16,9 +17,12 @@ from main import app
 def clean_db():
     init_db()
     conn = get_conn()
+    conn.execute("DELETE FROM poles")
     conn.execute("DELETE FROM device_sessions")
     conn.commit()
     conn.close()
+    # WS 전역 활성 세션 리셋 (테스트 간 누수 방지)
+    main._active["id"] = None
     yield
 
 
