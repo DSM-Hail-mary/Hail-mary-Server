@@ -1,39 +1,72 @@
--- PoleWatch 백엔드 스키마
--- 1) device_sessions : 기기 상태(주행 세션 지표·시계열)  ─ 화면 C
--- 2) poles           : 온디바이스 판정 결과(전주 위험등급·사진)  ─ 실시간 전송
+-- PoleWatch 백엔드 스키마 (프론트 계약 기준: docs/API.md, domain/types.ts)
+--   device_sessions : 기기 상태 (GET /api/device/session/latest)
+--   drives          : 주행 1회 (GET /api/v1/drives)
+--   records         : 전주 판정 기록 (GET /api/v1/records) — 프론트 PoleRecord
+--   crops           : 판정 크롭 + 검출 박스
+--   sync_state      : 동기화 상태 (GET /api/v1/sync)
 
--- 기기(주행 세션) 상태
 CREATE TABLE IF NOT EXISTS device_sessions (
     id            INTEGER PRIMARY KEY,
-    device        TEXT,                     -- "Jetson Nano"
-    date          TEXT NOT NULL,            -- 주행 날짜
+    device        TEXT,
+    date          TEXT NOT NULL,
     start_time    TEXT,
     end_time      TEXT,
     duration_sec  INTEGER,
     max_temp      REAL,
     avg_temp      REAL,
-    throttle_temp REAL,                     -- 스로틀링 기준 온도
+    throttle_temp REAL,
     avg_power     REAL,
     max_power     REAL,
     frame_drops   INTEGER,
     total_frames  INTEGER,
-    gps_reception REAL,                     -- 0~1
-    telemetry     TEXT                      -- JSON: {"t":[],"temp":[],"power":[],"drops":[],"gps":[]}
+    gps_reception REAL,
+    telemetry     TEXT
 );
 
--- 온디바이스 판정 결과 (전주 단위). Jetson이 판정 후 실시간으로 전송한다.
-CREATE TABLE IF NOT EXISTS poles (
-    id          INTEGER PRIMARY KEY,
-    session_id  INTEGER REFERENCES device_sessions(id),
-    pole_no     TEXT,                        -- 전주 번호(있으면)
-    grade       TEXT NOT NULL,               -- danger | caution | safe (위험/주의/양호)
-    hazard_type TEXT,                         -- nest | tree (까치집/수목)
-    conf        REAL,                         -- 판정 신뢰도 0~1
-    lat         REAL,                         -- GPS 위도(없으면 NULL)
-    lon         REAL,                         -- GPS 경도
-    recorded_at TEXT NOT NULL,                -- 판정 시각(ISO8601)
-    image_path  TEXT                          -- best-frame 크롭 사진 파일명 (images/ 하위)
+CREATE TABLE IF NOT EXISTS drives (
+    id          TEXT PRIMARY KEY,          -- "drive-20260927-1"
+    date        TEXT NOT NULL,             -- YYYY-MM-DD
+    started_at  TEXT,                      -- ISO8601 (+09:00)
+    ended_at    TEXT,                      -- ISO8601
+    session_id  INTEGER REFERENCES device_sessions(id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_poles_grade   ON poles(grade);
-CREATE INDEX IF NOT EXISTS idx_poles_session ON poles(session_id);
+CREATE TABLE IF NOT EXISTS records (
+    id                TEXT PRIMARY KEY,    -- "2026-09-27_3501-12669-N" (전주+날짜) 또는 uuid
+    drive_id          TEXT REFERENCES drives(id),
+    pole_id           TEXT,                -- GPS 미수신이면 NULL
+    lat               REAL,                -- 미수신이면 NULL
+    lng               REAL,
+    heading_deg       REAL,
+    recorded_at       TEXT NOT NULL,       -- ISO8601 (+09:00)
+    grade             TEXT NOT NULL,       -- danger | warn | ok
+    hazard            TEXT,                -- nest | tree | NULL
+    status            TEXT,                -- new|checked|planned|removed | NULL(양호)
+    review            TEXT,                -- correct|false_positive | NULL
+    basis_metric      TEXT,                -- nest_size|tree_proximity | NULL
+    basis_level       INTEGER,             -- 0|1|2 | NULL
+    thumbnail_url     TEXT NOT NULL DEFAULT '',
+    consecutive_finds INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS crops (
+    id         TEXT PRIMARY KEY,           -- "c1"
+    record_id  TEXT NOT NULL REFERENCES records(id),
+    seq        INTEGER NOT NULL DEFAULT 1,
+    url        TEXT NOT NULL,
+    detections TEXT NOT NULL DEFAULT '[]'  -- JSON: [{kind,box:{x,y,w,h},score}]
+);
+
+CREATE TABLE IF NOT EXISTS sync_state (
+    id             INTEGER PRIMARY KEY CHECK (id = 1),
+    state          TEXT NOT NULL DEFAULT 'done',   -- done|syncing|failed
+    done           INTEGER,
+    total          INTEGER,
+    reason         TEXT,
+    last_synced_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_records_date  ON records(substr(recorded_at,1,10));
+CREATE INDEX IF NOT EXISTS idx_records_drive ON records(drive_id);
+CREATE INDEX IF NOT EXISTS idx_records_pole  ON records(pole_id);
+CREATE INDEX IF NOT EXISTS idx_crops_record  ON crops(record_id);
