@@ -1,92 +1,62 @@
-# Hail-Mary Server — PoleWatch 기기 상태 백엔드
+# Hail-Mary Server — PoleWatch 백엔드
 
-PoleWatch(차량 장착형 배전 전주 상단 위험 자동 기록 시스템)의 **기기 상태 백엔드**.
-Jetson 엣지가 주행 중 기기 지표(온도·전력·프레임드롭·GPS)를 전송하면 저장하고,
-대시보드가 조회한다.
+PoleWatch 백엔드. **프론트엔드(Hail-mary-Front) 계약(`docs/API.md`)에 맞춘 REST**와,
+Jetson 엣지가 붙는 실시간 **WebSocket**을 제공한다.
 
-## 아키텍처 — 통신 채널 2개
-
+## 아키텍처
 ```
- [Jetson 엣지] ──WS /ws/device──▶ [이 서버] ──GET /api/...──▶ [대시보드]
-   기기 telemetry + 판정 결과       SQLite 저장            기기 상태 + 판정 조회
-   (온디바이스 처리 후 실시간)       (+ 판정 사진)
+ [Jetson 엣지] ──WS /ws/device──▶ [이 서버] ──REST /api/v1/*──▶ [대시보드(Front)]
+   telemetry + 판정(detection)      SQLite + 사진        주행·기록·기기상태·동기화 조회
 ```
-
-| 채널 | 담당 | 방식 | 엔드포인트 |
-|---|---|---|---|
-| 🔌 임베디드(Jetson) → 서버 | 임베디드 | WebSocket | `WS /ws/device` (telemetry + detection) |
-| 🖥️ 프론트엔드 → 서버 | 프론트 | REST | `GET /api/device/session/latest`, `GET /api/poles` 등 |
-
-**데이터 2종**
-- **기기 상태** — 온도·전력·프레임드롭·GPS 시계열 (주행 세션 단위)
-- **판정 결과** — 온디바이스 판정된 전주: 등급 `위험/주의/양호` + 위험유형(까치집/수목) + GPS + **best-frame 사진**
 
 ## 기술 스택
-- **FastAPI** (Python) — REST + WebSocket
-- **SQLite** — `device_sessions` 단일 테이블 (별도 DB 서버 불필요)
-- **Pydantic** — 응답 스키마 계약 강제
-- **pytest** — REST/WS 계약 회귀 테스트
+- **FastAPI** — REST + WebSocket
+- **SQLite** — device_sessions / drives / records / crops / sync_state
+- **Pydantic** — 프론트 계약(camelCase, `danger/warn/ok`)과 1:1 응답 모델
+- **pytest** — 계약 회귀 테스트
 
 ## 실행
 ```bash
 pip install -r requirements.txt
-python seed.py                       # (선택) 더미 세션 데이터
+python seed.py                       # 더미 주행·기록·세션
 uvicorn main:app --reload --port 8000
 ```
-- Swagger 문서: http://127.0.0.1:8000/docs
+- Swagger: http://127.0.0.1:8000/docs
+- 환경변수: `POLEWATCH_DB`(DB 경로), `POLEWATCH_CORS`(허용 오리진)
 
-### 환경변수
-| 변수 | 기본값 | 설명 |
-|---|---|---|
-| `POLEWATCH_DB` | `server/poles.db` | SQLite 파일 경로 |
-| `POLEWATCH_CORS` | `*` | 허용 오리진(쉼표 구분) |
+## REST API (프론트 계약, `docs/API.md`)
+| 메서드 | 경로 | 응답 | 용도 |
+|---|---|---|---|
+| GET | `/api/v1/drives/dates` | `DriveDate[]` | 기록 있는 날짜 |
+| GET | `/api/v1/drives?date=` | `Drive[]` | 주행 경로(route) |
+| GET | `/api/v1/records?date=` | `PoleRecord[]` | 전주 기록 (지도·목록) |
+| GET | `/api/v1/records/{id}` | `PoleRecord` | 기록 상세 |
+| PATCH | `/api/v1/records/{id}` | `PoleRecord` | 처리상태·검수 `{status?, review?}` |
+| GET | `/api/device/session/latest` | `DeviceSession` | 기기 상태 (snake_case) |
+| GET | `/api/v1/sync` | `SyncStatus` | 동기화 상태 |
+| POST | `/api/v1/sync/retry` | `SyncStatus` | 다시 시도 |
+| GET | `/images/{file}` | 이미지 | 판정 사진 |
 
-## API 요약
+- 등급 `danger`(위험)/`warn`(주의)/`ok`(양호). 시각 ISO8601(+09:00).
+- 양호 기록에 `status` PATCH → 422. 없는 기록 → 404 `{"detail": "..."}`.
+- 응답 모양 기준: 프론트 `src/domain/types.ts`, 검증: `src/api/schemas.ts`(zod).
 
-### 🖥️ REST (프론트엔드)
-| 메서드 | 경로 | 용도 |
-|---|---|---|
-| GET | `/api/device/session/latest` | 최신 주행 세션 지표 + 시계열 |
-| GET | `/api/poles` | 판정 전주 목록 (`?grade=&hazard_type=&session_id=&date=`) |
-| GET | `/api/poles/{id}` | 전주 판정 상세 |
-| GET | `/api/summary` | 등급별 집계 (`total/danger/caution/safe`, `?date=`) |
-| GET | `/images/{file}` | 판정 사진(best-frame 크롭) |
-
-판정 전주 응답 예:
-```json
-{ "id": 1, "grade": "danger", "grade_ko": "위험", "hazard_type": "nest",
-  "conf": 0.9, "lat": 35.05, "lon": 126.69, "recorded_at": "2026-09-27T09:15:22",
-  "image_url": "/images/pole_1.jpg",
-  "roadview_url": "https://map.kakao.com/link/roadview/35.05,126.69" }
-```
-
-### 🔌 WebSocket — `WS /ws/device` (임베디드)
-Jetson이 실시간 스트리밍. 서버는 각 메시지에 `ack` 응답.
-
-| 메시지 | 용도 | 예시 |
-|---|---|---|
-| `session_start` | 기기 세션 시작 | `{"type":"session_start","device":"Jetson Nano","date":"2026-09-27","start_time":"09:11"}` |
-| `telemetry` | 기기 지표 1포인트 | `{"type":"telemetry","t":"09:12","temp":49.4,"power":8.8,"drops":3,"gps":1}` |
-| `session_end` | 기기 세션 종료 | `{"type":"session_end","end_time":"09:32","max_temp":74.0, ...}` |
-| `detection` | 전주 판정 결과 | `{"type":"detection","grade":"danger","hazard_type":"nest","conf":0.9,"lat":35.05,"lon":126.69,"image_b64":"<JPEG base64>"}` |
-
-- 기기 상태 흐름: `session_start` → `telemetry` × N → `session_end`
-- 판정 결과: 주행 중 판정될 때마다 `detection` 전송 (등급 `danger/caution/safe`, best-frame 사진은 `image_b64`)
+## WebSocket — `WS /ws/device` (임베디드)
+| 메시지 | 용도 |
+|---|---|
+| `session_start` | 세션+주행 시작 (drive 생성) |
+| `telemetry` | 기기 지표 1포인트 |
+| `session_end` | 세션 종료 + 요약 |
+| `detection` | 전주 판정 → `records` 저장. 엣지 등급(`danger/caution/safe`)은 서버가 `danger/warn/ok`로 매핑, 사진은 `image_b64` |
 
 ## 테스트
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q          # REST/WS 계약 테스트
+python -m pytest -q
 ```
+프론트 실제 `httpApi`(zod) 검증으로 전 엔드포인트 통과 확인됨.
 
 ## 구조
 ```
-.
-├─ main.py              FastAPI 앱 (REST §1 + WebSocket §2 + 응답 모델)
-├─ db.py                SQLite 연결·초기화
-├─ schema.sql           device_sessions 스키마
-├─ seed.py              더미 세션 시더
-├─ tests/               REST/WS 계약 테스트 (pytest)
-├─ requirements.txt
-└─ requirements-dev.txt
+main.py · db.py · schema.sql · seed.py · tests/ · requirements*.txt
 ```
