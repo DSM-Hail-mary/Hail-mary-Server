@@ -11,7 +11,7 @@
 
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white) ![WebSocket](https://img.shields.io/badge/WebSocket-111111?style=flat-square)
 
-<sub>[HailMary 조직](https://github.com/DSM-Hail-mary) · [main](https://github.com/DSM-Hail-mary/Hail-mary-main) · [Camera](https://github.com/DSM-Hail-mary/Hail-mary-Camera) · [Server](https://github.com/DSM-Hail-mary/Hail-mary-Server) · [Front](https://github.com/DSM-Hail-mary/Hail-mary-Front)</sub>
+<sub>[HailMary 조직](https://github.com/DSM-Hail-mary) · [main](https://github.com/DSM-Hail-mary/Hail-mary-main) · [Server](https://github.com/DSM-Hail-mary/Hail-mary-Server) · [Front](https://github.com/DSM-Hail-mary/Hail-mary-Front)</sub>
 
 </div>
 
