@@ -1,7 +1,26 @@
-# Hail-Mary Server — PoleWatch 백엔드
+<div align="center">
 
-PoleWatch 백엔드. **프론트엔드(Hail-mary-Front) 계약(`docs/API.md`)에 맞춘 REST**와,
-Jetson 엣지가 붙는 실시간 **WebSocket**을 제공한다.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/DSM-Hail-mary/.github/main/profile/assets/hailmary-logo-dark.png">
+  <img src="https://raw.githubusercontent.com/DSM-Hail-mary/.github/main/profile/assets/hailmary-logo-light.png" alt="HailMary" width="280">
+</picture>
+
+# HailMary · Server
+
+**엣지 판정 결과를 받아 저장하고 대시보드에 제공하는 백엔드**
+
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white) ![WebSocket](https://img.shields.io/badge/WebSocket-111111?style=flat-square)
+
+<sub>[HailMary 조직](https://github.com/DSM-Hail-mary) · [main](https://github.com/DSM-Hail-mary/Hail-mary-main) · [Camera](https://github.com/DSM-Hail-mary/Hail-mary-Camera) · [Server](https://github.com/DSM-Hail-mary/Hail-mary-Server) · [Front](https://github.com/DSM-Hail-mary/Hail-mary-Front)</sub>
+
+</div>
+
+---
+
+## 역할
+
+HailMary 시스템의 **백엔드**입니다. Jetson 엣지가 붙는 실시간 **WebSocket**으로 판정 결과·사진·기기 상태를 받아 저장하고,
+[Front](https://github.com/DSM-Hail-mary/Hail-mary-Front) 계약(`docs/API.md`)에 맞춘 **REST API**로 대시보드에 제공합니다.
 
 ## 아키텍처
 ```
@@ -57,6 +76,11 @@ python -m pytest -q
 프론트 실제 `httpApi`(zod) 검증으로 전 엔드포인트 통과 확인됨.
 
 ## 구조
-```
-main.py · db.py · schema.sql · seed.py · tests/ · requirements*.txt
-```
+
+| 파일 | 역할 |
+|---|---|
+| `main.py` | FastAPI 앱 — REST 엔드포인트, `WS /ws/device`, 응답 모델 |
+| `db.py` | SQLite 연결·초기화 (`POLEWATCH_DB`로 경로 변경) |
+| `schema.sql` | `device_sessions` · `drives` · `records` · `crops` · `sync_state` |
+| `seed.py` | 더미 주행·기록·세션 생성 |
+| `tests/` | 프론트 계약 회귀 테스트 (pytest) |
