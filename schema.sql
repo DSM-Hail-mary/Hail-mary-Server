@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS records (
     hazard            TEXT,                -- nest | tree | NULL
     status            TEXT,                -- new|checked|planned|removed | NULL(양호)
     review            TEXT,                -- correct|false_positive | NULL
+    planned_date      TEXT,                -- 철거 예정일 YYYY-MM-DD | NULL
     basis_metric      TEXT,                -- nest_size|tree_proximity | NULL
     basis_level       INTEGER,             -- 0|1|2 | NULL
     thumbnail_url     TEXT NOT NULL DEFAULT '',

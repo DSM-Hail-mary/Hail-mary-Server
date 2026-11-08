@@ -8,7 +8,7 @@ _JPEG_1PX_B64 = (
 )
 
 REC_KEYS = {"id", "poleId", "driveId", "position", "headingDeg", "recordedAt",
-            "grade", "hazard", "status", "review", "basis", "thumbnailUrl",
+            "grade", "hazard", "status", "review", "plannedDate", "basis", "thumbnailUrl",
             "crops", "consecutiveFinds", "previousVisit"}
 
 
@@ -91,8 +91,50 @@ def test_patch_status_on_ok_rejected_422(client):
     assert r.status_code == 422
 
 
+def test_patch_planned_date_set_and_clear(client):
+    rid = _make_record(client, "danger")
+    r = client.patch(f"/api/v1/records/{rid}", json={"status": "planned", "plannedDate": "2026-11-20"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "planned" and r.json()["plannedDate"] == "2026-11-20"
+    # 상태를 바꿔도 예정일은 유지
+    r = client.patch(f"/api/v1/records/{rid}", json={"status": "removed"})
+    assert r.json()["plannedDate"] == "2026-11-20"
+    r = client.patch(f"/api/v1/records/{rid}", json={"plannedDate": None})
+    assert r.json()["plannedDate"] is None
+
+
+def test_patch_planned_date_invalid_or_ok_rejected_422(client):
+    rid = _make_record(client, "danger")
+    assert client.patch(f"/api/v1/records/{rid}", json={"plannedDate": "11/20"}).status_code == 422
+    ok = _make_record(client, "ok")
+    assert client.patch(f"/api/v1/records/{ok}", json={"plannedDate": "2026-11-20"}).status_code == 422
+
+
 def test_patch_missing_record_404(client):
     assert client.patch("/api/v1/records/none", json={"status": "checked"}).status_code == 404
+
+
+# ---- 판정 크롭 검출 박스 ----------------------------------------------------
+def _detect_with(client, **extra):
+    with client.websocket_connect("/ws/device") as ws:
+        ws.send_json({"type": "detection", "grade": "danger", "hazard_type": "nest",
+                      "conf": 0.9, "lat": 35.0, "lon": 126.0,
+                      "recorded_at": "2026-09-27T10:00:00+09:00",
+                      "image_b64": _JPEG_1PX_B64, **extra})
+        rid = ws.receive_json()["record_id"]
+    return client.get(f"/api/v1/records/{rid}").json()["crops"][0]["detections"]
+
+
+def test_detection_boxes_from_edge(client):
+    dets = [{"kind": "nest", "box": {"x": 0.07, "y": 0.07, "w": 0.86, "h": 0.86}, "score": 0.9},
+            {"kind": "pole", "box": {"x": 0.4, "y": 0.5, "w": 0.2, "h": 0.5}, "score": 0.7}]
+    assert _detect_with(client, detections=dets) == dets
+
+
+def test_detection_boxes_fallback_whole_crop(client):
+    whole = [{"kind": "nest", "box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}, "score": 0.9}]
+    assert _detect_with(client) == whole                                  # 구버전 엣지
+    assert _detect_with(client, detections=[{"kind": "bird"}]) == whole   # 형식 오류
 
 
 # ---- sync -------------------------------------------------------------------

@@ -21,13 +21,13 @@ import json
 import os
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone, timedelta
+from datetime import date as Date, datetime, timezone, timedelta
 from typing import Literal, Optional, Union
 
 from fastapi import Body, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from db import get_conn, init_db, BASE_DIR
 
@@ -109,6 +109,7 @@ class PoleRecord(BaseModel):
     hazard: Optional[Literal["nest", "tree"]] = None
     status: Optional[Literal["new", "checked", "planned", "removed"]] = None
     review: Optional[Literal["correct", "false_positive"]] = None
+    plannedDate: Optional[str] = None      # 철거 예정일 YYYY-MM-DD
     basis: Optional[GradeBasis] = None
     thumbnailUrl: str
     crops: list[Crop]
@@ -208,6 +209,7 @@ def _record_dict(conn, r) -> dict:
         "hazard": r["hazard"],
         "status": r["status"],
         "review": r["review"],
+        "plannedDate": r["planned_date"],
         "basis": _basis(r["basis_metric"], r["basis_level"]),
         "thumbnailUrl": r["thumbnail_url"],
         "crops": [{"id": c["id"], "url": c["url"],
@@ -282,6 +284,11 @@ def get_record(record_id: str):
 class RecordPatch(BaseModel):
     status: Optional[Literal["new", "checked", "planned", "removed"]] = None
     review: Optional[Literal["correct", "false_positive"]] = None
+    plannedDate: Optional[Date] = None     # 철거 예정일. null이면 지움
+
+
+# PATCH 필드 → records 컬럼
+_PATCH_COLS = {"status": "status", "review": "review", "plannedDate": "planned_date"}
 
 
 @app.patch("/api/v1/records/{record_id}", response_model=PoleRecord)
@@ -292,12 +299,17 @@ def update_record(record_id: str, patch: RecordPatch = Body(...)):
         conn.close()
         raise HTTPException(404, "기록을 찾을 수 없습니다")
     fields = patch.model_dump(exclude_unset=True)
-    # 양호(ok) 기록은 처리 상태 대상이 아님
+    # 양호(ok) 기록은 처리 상태·예정일 대상이 아님
     if "status" in fields and fields["status"] is not None and r["grade"] == "ok":
         conn.close()
         raise HTTPException(422, "양호 기록에는 처리 상태를 지정할 수 없습니다")
+    if fields.get("plannedDate") is not None and r["grade"] == "ok":
+        conn.close()
+        raise HTTPException(422, "양호 기록에는 예정일을 지정할 수 없습니다")
+    if fields.get("plannedDate") is not None:
+        fields["plannedDate"] = fields["plannedDate"].isoformat()
     for k, v in fields.items():
-        conn.execute(f"UPDATE records SET {k}=? WHERE id=?", (v, record_id))
+        conn.execute(f"UPDATE records SET {_PATCH_COLS[k]}=? WHERE id=?", (v, record_id))
     conn.commit()
     # 오탐이면 재학습용 폴더 표시(스텁): 실제 이동은 파이프라인/배치에서
     if fields.get("review") == "false_positive":
@@ -363,6 +375,18 @@ _active = {"id": None, "drive_id": None, **{k: [] for k in TELE_KEYS}}
 _SUMMARY_COLS = ("end_time", "duration_sec", "max_temp", "avg_temp",
                  "throttle_temp", "avg_power", "max_power",
                  "frame_drops", "total_frames", "gps_reception")
+
+
+def _parse_detections(raw) -> Optional[list]:
+    """엣지가 보낸 크롭 기준 검출 박스([{kind, box:{x,y,w,h}, score}], 0~1) 검증.
+    형식이 틀리거나 없으면 None (호출부가 기본 박스로 대체)."""
+    if not isinstance(raw, list) or not raw:
+        return None
+    try:
+        dets = [Detection.model_validate(d) for d in raw]
+    except ValidationError:
+        return None
+    return [d.model_dump() for d in dets]
 
 
 def _save_image(rec_id: str, image_b64: Optional[str]) -> Optional[str]:
@@ -483,18 +507,19 @@ async def ws_device(ws: WebSocket):
                     (rec_id, _active["drive_id"], pole_no, lat, lng,
                      msg.get("heading_deg"), recorded_at, grade, hazard, status, None,
                      None, None, thumb, cf))
-                # 크롭 1장(사진) — 검출 박스는 vision이 채우면 확장
+                # 크롭 1장(사진) + 검출 박스. 엣지가 크롭 기준 박스를 보내면 그대로,
+                # 없으면(구버전 엣지) 사진 전체를 박스로 둔다.
                 conn.execute("DELETE FROM crops WHERE record_id=?", (rec_id,))
                 if thumb:
-                    det = []
-                    if hazard and msg.get("conf") is not None:
+                    det = _parse_detections(msg.get("detections"))
+                    if det is None and hazard and msg.get("conf") is not None:
                         det = [{"kind": hazard,
                                 "box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0},
                                 "score": msg["conf"]}]
                     conn.execute(
                         "INSERT INTO crops (id, record_id, seq, url, detections)"
                         " VALUES (?,?,?,?,?)",
-                        (f"{rec_id}-c1", rec_id, 1, thumb, json.dumps(det)))
+                        (f"{rec_id}-c1", rec_id, 1, thumb, json.dumps(det or [])))
                 conn.commit()
                 conn.close()
                 await ws.send_json({"type": "ack", "event": "detection",

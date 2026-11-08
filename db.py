@@ -23,5 +23,9 @@ def init_db() -> None:
         schema = f.read()
     conn = get_conn()
     conn.executescript(schema)
+    # 기존 DB 마이그레이션: CREATE TABLE IF NOT EXISTS 는 새 컬럼을 추가하지 않음
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(records)")}
+    if "planned_date" not in cols:
+        conn.execute("ALTER TABLE records ADD COLUMN planned_date TEXT")
     conn.commit()
     conn.close()
