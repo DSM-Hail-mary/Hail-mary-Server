@@ -50,14 +50,15 @@ uvicorn main:app --reload --port 8000
 | GET | `/api/v1/drives?date=` | `Drive[]` | 주행 경로(route) |
 | GET | `/api/v1/records?date=` | `PoleRecord[]` | 전주 기록 (지도·목록) |
 | GET | `/api/v1/records/{id}` | `PoleRecord` | 기록 상세 |
-| PATCH | `/api/v1/records/{id}` | `PoleRecord` | 처리상태·검수 `{status?, review?}` |
+| PATCH | `/api/v1/records/{id}` | `PoleRecord` | 처리상태·검수·철거 예정일 `{status?, review?, plannedDate?}` |
 | GET | `/api/device/session/latest` | `DeviceSession` | 기기 상태 (snake_case) |
 | GET | `/api/v1/sync` | `SyncStatus` | 동기화 상태 |
 | POST | `/api/v1/sync/retry` | `SyncStatus` | 다시 시도 |
 | GET | `/images/{file}` | 이미지 | 판정 사진 |
 
 - 등급 `danger`(위험)/`warn`(주의)/`ok`(양호). 시각 ISO8601(+09:00).
-- 양호 기록에 `status` PATCH → 422. 없는 기록 → 404 `{"detail": "..."}`.
+- `plannedDate`는 `YYYY-MM-DD` 또는 `null`(지움). 처리 상태와 별개로 유지된다.
+- 양호 기록에 `status`/`plannedDate` PATCH → 422. 없는 기록 → 404 `{"detail": "..."}`.
 - 응답 모양 기준: 프론트 `src/domain/types.ts`, 검증: `src/api/schemas.ts`(zod).
 
 ## WebSocket — `WS /ws/device` (임베디드)
@@ -66,7 +67,7 @@ uvicorn main:app --reload --port 8000
 | `session_start` | 세션+주행 시작 (drive 생성) |
 | `telemetry` | 기기 지표 1포인트 |
 | `session_end` | 세션 종료 + 요약 |
-| `detection` | 전주 판정 → `records` 저장. 엣지 등급(`danger/caution/safe`)은 서버가 `danger/warn/ok`로 매핑, 사진은 `image_b64` |
+| `detection` | 전주 판정 → `records` 저장. 엣지 등급(`danger/caution/safe`)은 서버가 `danger/warn/ok`로 매핑, 사진은 `image_b64`, 크롭 기준 검출 박스는 `detections`(선택, 없으면 사진 전체) |
 
 ## 테스트
 ```bash
