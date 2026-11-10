@@ -11,9 +11,14 @@ SCHEMA_PATH = os.path.join(BASE_DIR, "schema.sql")
 
 
 def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    # timeout: 잠금 시 최대 10초 대기(즉시 "database is locked" 방지).
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
     conn.row_factory = sqlite3.Row          # dict 형태 접근
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 10000")
+    # WAL: 읽기(대시보드 폴링)와 쓰기(엣지 WS)가 서로 막지 않게 → 동시 접근 안정.
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
     return conn
 
 

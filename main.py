@@ -282,6 +282,11 @@ def get_record(record_id: str):
 class RecordPatch(BaseModel):
     status: Optional[Literal["new", "checked", "planned", "removed"]] = None
     review: Optional[Literal["correct", "false_positive"]] = None
+    poleId: Optional[str] = None   # 전주 ID 직접 입력/수정 (빈 문자열이면 미할당으로)
+
+
+# 패치 필드명(camelCase) → DB 컬럼명 매핑. 허용 목록이라 임의 컬럼 수정 불가.
+_PATCH_COL = {"status": "status", "review": "review", "poleId": "pole_id"}
 
 
 @app.patch("/api/v1/records/{record_id}", response_model=PoleRecord)
@@ -296,8 +301,11 @@ def update_record(record_id: str, patch: RecordPatch = Body(...)):
     if "status" in fields and fields["status"] is not None and r["grade"] == "ok":
         conn.close()
         raise HTTPException(422, "양호 기록에는 처리 상태를 지정할 수 없습니다")
+    # 전주 ID: 공백만 입력하면 미할당(NULL)로
+    if "poleId" in fields and fields["poleId"] is not None:
+        fields["poleId"] = fields["poleId"].strip() or None
     for k, v in fields.items():
-        conn.execute(f"UPDATE records SET {k}=? WHERE id=?", (v, record_id))
+        conn.execute(f"UPDATE records SET {_PATCH_COL[k]}=? WHERE id=?", (v, record_id))
     conn.commit()
     # 오탐이면 재학습용 폴더 표시(스텁): 실제 이동은 파이프라인/배치에서
     if fields.get("review") == "false_positive":
@@ -468,35 +476,45 @@ async def ws_device(ws: WebSocket):
                 status = None if grade == "ok" else "new"
                 lat, lng = msg.get("lat"), msg.get("lon")
                 conn = get_conn()
-                # 이전 연속 발견 횟수
-                prev = conn.execute(
-                    "SELECT consecutive_finds FROM records WHERE pole_id=? AND recorded_at<?"
-                    " ORDER BY recorded_at DESC LIMIT 1", (pole_no, recorded_at)).fetchone()
-                cf = (prev["consecutive_finds"] + 1) if (prev and grade != "ok") else 1
-                # 사진 저장
-                thumb = _save_image(rec_id, msg.get("image_b64")) or ""
-                conn.execute(
-                    "INSERT OR REPLACE INTO records (id, drive_id, pole_id, lat, lng,"
-                    " heading_deg, recorded_at, grade, hazard, status, review,"
-                    " basis_metric, basis_level, thumbnail_url, consecutive_finds)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (rec_id, _active["drive_id"], pole_no, lat, lng,
-                     msg.get("heading_deg"), recorded_at, grade, hazard, status, None,
-                     None, None, thumb, cf))
-                # 크롭 1장(사진) — 검출 박스는 vision이 채우면 확장
-                conn.execute("DELETE FROM crops WHERE record_id=?", (rec_id,))
-                if thumb:
-                    det = []
-                    if hazard and msg.get("conf") is not None:
-                        det = [{"kind": hazard,
-                                "box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0},
-                                "score": msg["conf"]}]
+                try:
+                    # drive_id 검증: 활성 drive가 지워졌으면(데모 초기화 등) NULL로 넣어 FK 위반/WS끊김 방지
+                    drive_id = _active["drive_id"]
+                    if drive_id is not None and not conn.execute(
+                            "SELECT 1 FROM drives WHERE id=?", (drive_id,)).fetchone():
+                        drive_id = None
+                    # 이전 연속 발견 횟수
+                    prev = conn.execute(
+                        "SELECT consecutive_finds FROM records WHERE pole_id=? AND recorded_at<?"
+                        " ORDER BY recorded_at DESC LIMIT 1", (pole_no, recorded_at)).fetchone()
+                    cf = (prev["consecutive_finds"] + 1) if (prev and grade != "ok") else 1
+                    # 사진 저장
+                    thumb = _save_image(rec_id, msg.get("image_b64")) or ""
                     conn.execute(
-                        "INSERT INTO crops (id, record_id, seq, url, detections)"
-                        " VALUES (?,?,?,?,?)",
-                        (f"{rec_id}-c1", rec_id, 1, thumb, json.dumps(det)))
-                conn.commit()
-                conn.close()
+                        "INSERT OR REPLACE INTO records (id, drive_id, pole_id, lat, lng,"
+                        " heading_deg, recorded_at, grade, hazard, status, review,"
+                        " basis_metric, basis_level, thumbnail_url, consecutive_finds)"
+                        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (rec_id, drive_id, pole_no, lat, lng,
+                         msg.get("heading_deg"), recorded_at, grade, hazard, status, None,
+                         None, None, thumb, cf))
+                    # 크롭 1장(사진) — 검출 박스는 vision이 채우면 확장
+                    conn.execute("DELETE FROM crops WHERE record_id=?", (rec_id,))
+                    if thumb:
+                        det = []
+                        if hazard and msg.get("conf") is not None:
+                            det = [{"kind": hazard,
+                                    "box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0},
+                                    "score": msg["conf"]}]
+                        conn.execute(
+                            "INSERT INTO crops (id, record_id, seq, url, detections)"
+                            " VALUES (?,?,?,?,?)",
+                            (f"{rec_id}-c1", rec_id, 1, thumb, json.dumps(det)))
+                    # 대시보드 실시간 갱신: 동기화 시각을 올려 프론트(5초 폴링)가 새 기록을 다시 받게 함
+                    conn.execute("UPDATE sync_state SET last_synced_at=? WHERE id=1",
+                                 (datetime.now(KST).isoformat(timespec="seconds"),))
+                    conn.commit()
+                finally:
+                    conn.close()
                 await ws.send_json({"type": "ack", "event": "detection",
                                     "record_id": rec_id, "image_saved": bool(thumb)})
 
@@ -504,6 +522,32 @@ async def ws_device(ws: WebSocket):
                 await ws.send_json({"type": "error", "detail": f"unknown type: {mtype}"})
     except WebSocketDisconnect:
         pass
+
+
+# =============================================================================
+# 데모용 — 웹 기록 초기화 (모든 기록/주행/세션/사진 삭제, 되돌릴 수 없음)
+# =============================================================================
+@app.post("/api/v1/demo/reset")
+def demo_reset():
+    """시연 중 대시보드를 깨끗이 비운다. records·crops·drives·device_sessions 전부 삭제
+    + 저장된 판정 사진 제거. 현장 데모 전용."""
+    conn = get_conn()
+    counts = {}
+    for t in ("crops", "records", "drives", "device_sessions"):
+        counts[t] = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+        conn.execute(f"DELETE FROM {t}")
+    conn.execute("UPDATE sync_state SET state='done', last_synced_at=NULL WHERE id=1")
+    conn.commit()
+    conn.close()
+    import glob as _glob
+    removed = 0
+    for f in _glob.glob(os.path.join(IMAGES_DIR, "*.jpg")):
+        try:
+            os.remove(f)
+            removed += 1
+        except OSError:
+            pass
+    return {"ok": True, "deleted": counts, "images_removed": removed}
 
 
 @app.get("/")
